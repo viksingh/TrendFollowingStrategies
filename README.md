@@ -1,0 +1,2 @@
+# TrendFollowingStrategies
+Tend following strategies
