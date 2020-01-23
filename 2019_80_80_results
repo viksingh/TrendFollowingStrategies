@@ -1,0 +1,249 @@
+import pandas as pd
+import glob
+import os
+import numpy as np
+import sys
+import time
+#import pdb
+start_time = time.time()
+
+
+from google.colab import drive
+drive.mount('/content/drive')
+!{sys.executable} -m pip install PyDrive
+!{sys.executable} -m pip install yfinance
+
+
+import yfinance as yf
+import yfinance as yft
+
+# Check if index is going up
+
+moneyforeachstock = 2500
+amountSpent = 0
+c_stoplossindexdown = 0.80
+c_stoplossindexup = 0.80
+numberOfStocks = 0
+totalStocksHeld = 0
+
+totalSpent = 0
+totalValue = 0
+totalStopLossMoney = 0
+indexPath = '/content/drive/My Drive/Colab Notebooks/data2/index.csv'
+stockCombinedPath = '/content/drive/My Drive/Colab Notebooks/data2/stockscombined.csv'
+currentPricePath = '/content/drive/My Drive/Colab Notebooks/data2/CurrentPrice.csv'
+
+dfindex = pd.read_csv(indexPath, header=0)
+dfstocks = pd.read_csv(stockCombinedPath, header=0 )
+dfCurrentPrice = pd.read_csv(currentPricePath, header=0 )
+
+# Create a dataframe to store currently bought stocks
+# Fields : STOCK, BOUGHT DATE , BOUGHT PRICE , QTY, UPDATE DATE, LAST PRICE, RoC % , BOUGHTPRICE , UPDTPRICE
+# May be add an entry for each week when this gets checked
+
+def fround(f):
+    return str(round(f,2))
+
+def createqueryDate(d):
+    return 'DATE' + '==' + "'" + d + "'"
+
+def checkActive():
+    return "ACTIVE == 'X'"
+
+def checkStock(s):
+     return 'STOCK' + '==' + "'" + s + "'"
+
+#def get_Current_stockPrice(s,df):
+#%load_ext google.colab.data_table
+
+#pdb.set_trace()
+
+from datetime import date, timedelta
+
+start_date = date(2019, 1, 4)
+end_date = date(2020, 1, 10)
+
+delta = timedelta(days=28)
+
+
+ENDDATE = end_date.strftime("%Y-%m-%d")
+companiesList = dfstocks.STOCK.unique()
+
+dfStocksCurrentlyBought = pd.DataFrame(columns=['STOCK','PURCHASEDATE','PURCHASEPRICE','QTY','UPDATEDATE','UPDATEPRICE','MAXPRICE','ROC', 'ACTIVE'])
+
+while start_date <= end_date:
+    weektotalValue = 0
+    weektotalValueAPI = 0
+# Check if index is increasing / decreasing this week
+    processingDate = start_date.strftime("%Y-%m-%d")
+    dfNasdaqCheckIndexIncreasing = dfindex.query(createqueryDate(processingDate))
+    if (dfNasdaqCheckIndexIncreasing.shape[0])> 0:
+        isIndexIncreasing = dfNasdaqCheckIndexIncreasing['CROSS'].iloc[-1]
+        print('Index : ' + str(processingDate) + ' - ' + str(isIndexIncreasing))
+
+# Update to current weeks price
+
+        stockWeekUpdatePriceList = dfStocksCurrentlyBought.query("ACTIVE=='X'").STOCK.unique()
+        for stockUpdatePrice in stockWeekUpdatePriceList:
+            queryGetCurrentStockUpdatePrice = 'STOCK' + '==' + "'" + stockUpdatePrice + "'"
+            dfCurrentstockUpdatePrice = dfstocks.query(queryGetCurrentStockUpdatePrice)
+
+            queryGetUpdatePriceDateValue = "DATE" + "==" + "'" + processingDate + "'"
+            dfCurrentstockUpdatePrice = dfCurrentstockUpdatePrice.query(queryGetUpdatePriceDateValue)
+            dfCurrentstockUpdatePrice = dfCurrentstockUpdatePrice.tail(1)
+
+            # SUMMARY
+            if (dfCurrentstockUpdatePrice.shape[0]) > 0:
+                priceForWeek = float(dfCurrentstockUpdatePrice['PRICE'].iloc[0])
+                dqQty = dfStocksCurrentlyBought.query(queryGetCurrentStockUpdatePrice)
+                weekQtyForUpdate = float(dqQty['QTY'].iloc[0])
+                maxPriceTillNow = float(dqQty['MAXPRICE'].iloc[0])
+                weekQtyForUpdate = float(dqQty['QTY'].iloc[0])
+                updatePurchasePrice = float(dqQty['PURCHASEPRICE'].iloc[0])
+                updateCurrentPrice = float(dqQty['CURRPRICE'].iloc[0])
+                updateCurrentValue = float(dqQty['CURRVALUE'].iloc[0])
+
+                if( maxPriceTillNow < priceForWeek):
+                    maxPriceTillNow = priceForWeek
+                    dfStocksCurrentlyBought = dfStocksCurrentlyBought.append({'STOCK': stockUpdatePrice, 'PURCHASEDATE': processingDate, 'PURCHASEPRICE': updatePurchasePrice, 'QTY': weekQtyForUpdate, 'CURRVALUE': updateCurrentValue, 'CURRPRICE': updateCurrentPrice, 'MAXPRICE': maxPriceTillNow, 'ROC': ROI, 'ACTIVE': 'X'}, ignore_index=True)
+
+
+
+######################----------------------###################################
+######## SELL STOCK LOGIC #####################################################
+######################----------------------###################################
+        dfstocksActive = dfStocksCurrentlyBought.query(checkActive())
+        stockBoughtList = dfstocksActive.STOCK.unique()
+
+        for stockToSellCheck in stockBoughtList:
+
+            dfStockWithCurrentDate = dfstocks.query(createqueryDate(processingDate))
+            queryGetCurrentPriceWithDateSTOCK = checkStock(stockToSellCheck)
+            dfStockWithCurrentDate = dfStockWithCurrentDate.query(queryGetCurrentPriceWithDateSTOCK)
+# SELLING RULES
+# 1)If increasing index this week : current price is higher than 0.8 MAX PRICE => sell
+# 2) If currennt price or max price is lowe than 0.9 max price => sell
+            listMaxStockPrice = dfStocksCurrentlyBought.groupby(['STOCK'])['MAXPRICE'].max()
+            stockPriceThisStock =  round(float (listMaxStockPrice.get(key=stockToSellCheck)),2)
+            # Get current price if it's less than 0.8 MAX PRICE if index increasing or less than 0.9 index decreasing
+            if dfStockWithCurrentDate.size > 0:
+                currentStockPrice = dfStockWithCurrentDate.iloc[-1]['PRICE']
+                dfCurrentStockData = dfStocksCurrentlyBought.query(queryGetCurrentPriceWithDateSTOCK )
+                STOCKQTY = dfCurrentStockData.iloc[-1]['QTY']
+                if (isIndexIncreasing ==1):
+                    stopLossPrice = c_stoplossindexup *  stockPriceThisStock
+                else:
+                    stopLossPrice = c_stoplossindexdown *  stockPriceThisStock
+
+                if (currentStockPrice < stopLossPrice):
+                    dfStocksCurrentlyBought.loc[ (dfStocksCurrentlyBought.STOCK == stockToSellCheck  ),'ACTIVE'] = ''
+                    print(" --: STOCK VALUE IS : " + str(stockToSellCheck) +' - ' + str(processingDate) +' - ' +  ' Total Amount : ' + fround(currentStockPrice * STOCKQTY ))
+                    totalStocksHeld = totalStocksHeld - 1
+                    totalStopLossMoney = totalStopLossMoney + currentStockPrice * STOCKQTY
+                    print("STOP LOSS TRIGGERED FOR " + stockToSellCheck + ' .GETTING ' + fround(currentStockPrice * STOCKQTY) + ' AND TOTAL FROM STOP LOSS IS ' + fround(totalStopLossMoney ))
+
+## BUY RULES
+
+    if (isIndexIncreasing == 1):
+        for  stock in companiesList :
+            queryGetCurrentStockData = 'STOCK' + '==' + "'" + stock + "'"
+            dfCurrentStock = dfstocks.query(queryGetCurrentStockData)
+            periodToLookBack = 20 # 20 weeks
+            queryDateForCurrentStock = "DATE" + "<" + "'" + processingDate + "'"
+            dfCurrentStocklookBackData = dfCurrentStock.query(queryDateForCurrentStock)
+            dfCurrentStocklookBackData = dfCurrentStocklookBackData.tail(periodToLookBack)
+            if dfCurrentStocklookBackData.shape[0] > periodToLookBack - 1:
+                start = 0
+                length = periodToLookBack - 1
+                stockHighestPointValid = True
+                latestpriceIndex = length - start
+                for n in range(start, start + length):
+                    currentweekPrice  = dfCurrentStocklookBackData['PRICE'].iloc[latestpriceIndex]
+                    lastweekPrice = dfCurrentStocklookBackData['PRICE'].iloc[n]
+                    if (lastweekPrice > currentweekPrice):
+                        stockHighestPointValid = False
+                        break
+
+                if( stockHighestPointValid == True ):
+                    STOCK = dfCurrentStocklookBackData['STOCK'].iloc[-1]
+                    VOLUME = dfCurrentStocklookBackData['VOLUME'].iloc[-1]
+                    DATE = processingDate #dfCurrentStocklookBackData['DATE'].iloc[-1]
+                    ROI = dfCurrentStocklookBackData['ROC100'].iloc[-1]
+## how to use this .it should be the same as last price
+                    maxPrice = dfCurrentStocklookBackData.loc[dfCurrentStocklookBackData['PRICE'].idxmax()]['PRICE']
+
+                    if (ROI > 30 and ROI < 80 and VOLUME > 1000000 and maxPrice > 15 and stockHighestPointValid == True):
+
+                        dfCheckStockALreadyAdded = dfStocksCurrentlyBought.query(queryGetCurrentStockData)
+                        if dfCheckStockALreadyAdded.size == 0:
+                            totalStocksHeld = totalStocksHeld + 1
+                            CURRENTPRICESTOCKDATE = ''
+                            numberOfStocks = int(moneyforeachstock / maxPrice)
+                            amountSpent = numberOfStocks *  maxPrice
+#                            try:
+#                                currentPriceAPICall = str(fround(yf.Ticker(STOCK).info['regularMarketPrice']))
+                            queryGetCurrentStockPrice = 'STOCK' + '==' + "'" + stock + "'"
+                            dfCurrentStockPrice = dfCurrentPrice.query(queryGetCurrentStockPrice)
+                            if(not dfCurrentStockPrice.empty):
+                                currentPriceAPICall = float( dfCurrentStockPrice['CURRPRICE'].iloc[0] )
+                                currentValueAPICall = fround( currentPriceAPICall * numberOfStocks)
+                                print( str(totalStocksHeld) +' ++ : ' + STOCK + ',' + str(processingDate) + ',' + 'PP: '+ fround(maxPrice) + ',CP:'+ str(currentPriceAPICall) + ',' +'QTY: '+ str(numberOfStocks) +', AS: '+ fround(amountSpent) +','+ 'CV: '+ currentValueAPICall + ',ROI: ' + fround(ROI))
+                                dfStocksCurrentlyBought = dfStocksCurrentlyBought.append({'STOCK':STOCK , 'PURCHASEDATE' : DATE , 'PURCHASEPRICE': maxPrice , 'QTY': numberOfStocks , 'CURRVALUE': currentValueAPICall ,'CURRPRICE': currentPriceAPICall , 'MAXPRICE' : maxPrice, 'ROC': ROI , 'ACTIVE': 'X' }, ignore_index=True)
+                                totalSpent = totalSpent + amountSpent
+    else:
+        print('NO RECOMMENDATIONS AS INDEX IS GOING DOWN : ' + str(start_date))
+
+
+# Update MAX Price of this week
+
+
+    start_date += delta
+
+weekValueAPICall = 0
+weektotalValue = 0
+totalValueWeek = 0
+totalValueWeekAPICall = 0
+
+print('CHECKING ROI')
+
+stockWeekList = dfStocksCurrentlyBought.query("ACTIVE=='X'").STOCK.unique()
+for stockWeekValue in stockWeekList:
+    queryGetCurrentStockDataWeekValue = 'STOCK' + '=='+"'"+stockWeekValue+"'"
+    dfCurrentstockWeekValue=dfstocks.query(queryGetCurrentStockDataWeekValue)
+
+    queryGetCurrentPriceWithDateWeekValue="DATE"+"=="+"'"+processingDate+"'"
+    dfCurrentstockWeekValue=dfCurrentstockWeekValue.query(queryGetCurrentPriceWithDateWeekValue)
+    dfCurrentstockWeekValue=dfCurrentstockWeekValue.tail(1)
+
+
+    #SUMMARY
+    if(dfCurrentstockWeekValue.shape[0])>0:
+        priceForWeek=float(dfCurrentstockWeekValue['PRICE'].iloc[0])
+        dqQty = dfStocksCurrentlyBought.query(queryGetCurrentStockDataWeekValue)
+        weekQty=float(dqQty['QTY'].iloc[0])
+        stockValue=float(priceForWeek*weekQty)
+        weektotalValue = float(weektotalValue + stockValue)
+
+        weekPriceAPICall = 0
+#        try:
+#            weekPriceAPICall = yft.Ticker(stockWeekValue).info['regularMarketPrice']
+        queryGetCurrentStockPriceWeek = 'STOCK' + '==' + "'" + stockWeekValue + "'"
+        dfCurrentStockPriceWeek = dfCurrentPrice.query(queryGetCurrentStockPriceWeek)
+        if(not dfCurrentStockPriceWeek.empty):
+            weekPriceAPICall = float(dfCurrentStockPriceWeek['CURRPRICE'].iloc[0])
+            weekValueAPICall = weekPriceAPICall * weekQty
+            weektotalValueAPI = float(weektotalValueAPI) + float(weekValueAPICall)
+            print("Check stock " + str(stockWeekValue) + ' getting ' + fround(weekValueAPICall) + 'and total is ' + fround(weektotalValueAPI) )
+
+weektotalValueAPI = weektotalValueAPI + totalStopLossMoney
+weektotalValue = weektotalValue + totalStopLossMoney
+if( weektotalValue > 0):
+    currWeekROI = fround((weektotalValue -totalSpent)/totalSpent*100)
+    currPriceAPI = fround((weektotalValueAPI -totalSpent)/totalSpent*100)
+
+
+print('Spent:'+fround(totalSpent)+'-'+'Week Value @ ' + processingDate  +'- '+ 'Week Value: '+ fround(weektotalValue) + 'Curr Price Week Value : ' + fround(weektotalValueAPI) +' ROI%='+ currWeekROI +'%'  +' CURR ROI%='+ currPriceAPI +'%' )
+
+
+
+print("--- %s seconds ---" % (time.time() - start_time))
