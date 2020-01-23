@@ -1,0 +1,493 @@
+import pandas as pd
+import glob
+import os
+import numpy as np
+import sys
+import time
+#import pdb
+start_time = time.time()
+
+
+from google.colab import drive
+drive.mount('/content/drive')
+!{sys.executable} -m pip install PyDrive
+!{sys.executable} -m pip install yfinance
+
+
+import yfinance as yf
+import yfinance as yft
+
+# Check if index is going up
+
+moneyforeachstock = 2500
+amountSpent = 0
+c_stoplossindexdown = 0.80
+c_stoplossindexup = 0.80
+numberOfStocks = 0
+totalStocksHeld = 0
+
+totalSpent = 0
+totalValue = 0
+totalStopLossMoney = 0
+indexPath = '/content/drive/My Drive/Colab Notebooks/data2/index.csv'
+stockCombinedPath = '/content/drive/My Drive/Colab Notebooks/data2/stockscombined.csv'
+currentPricePath = '/content/drive/My Drive/Colab Notebooks/data2/CurrentPrice.csv'
+
+dfindex = pd.read_csv(indexPath, header=0)
+dfstocks = pd.read_csv(stockCombinedPath, header=0 )
+dfCurrentPrice = pd.read_csv(currentPricePath, header=0 )
+
+# Create a dataframe to store currently bought stocks
+# Fields : STOCK, BOUGHT DATE , BOUGHT PRICE , QTY, UPDATE DATE, LAST PRICE, RoC % , BOUGHTPRICE , UPDTPRICE
+# May be add an entry for each week when this gets checked
+
+def fround(f):
+    return str(round(f,2))
+
+def createqueryDate(d):
+    return 'DATE' + '==' + "'" + d + "'"
+
+def checkActive():
+    return "ACTIVE == 'X'"
+
+def checkStock(s):
+     return 'STOCK' + '==' + "'" + s + "'"
+
+#def get_Current_stockPrice(s,df):
+#%load_ext google.colab.data_table
+
+#pdb.set_trace()
+
+from datetime import date, timedelta
+
+start_date = date(2019, 1, 4)
+end_date = date(2020, 1, 10)
+
+delta = timedelta(days=28)
+
+
+ENDDATE = end_date.strftime("%Y-%m-%d")
+companiesList = dfstocks.STOCK.unique()
+
+dfStocksCurrentlyBought = pd.DataFrame(columns=['STOCK','PURCHASEDATE','PURCHASEPRICE','QTY','UPDATEDATE','UPDATEPRICE','MAXPRICE','ROC', 'ACTIVE'])
+
+while start_date <= end_date:
+    weektotalValue = 0
+    weektotalValueAPI = 0
+# Check if index is increasing / decreasing this week
+    processingDate = start_date.strftime("%Y-%m-%d")
+    dfNasdaqCheckIndexIncreasing = dfindex.query(createqueryDate(processingDate))
+    if (dfNasdaqCheckIndexIncreasing.shape[0])> 0:
+        isIndexIncreasing = dfNasdaqCheckIndexIncreasing['CROSS'].iloc[-1]
+        print('Index : ' + str(processingDate) + ' - ' + str(isIndexIncreasing))
+
+# Update to current weeks price
+
+        stockWeekUpdatePriceList = dfStocksCurrentlyBought.query("ACTIVE=='X'").STOCK.unique()
+        for stockUpdatePrice in stockWeekUpdatePriceList:
+            queryGetCurrentStockUpdatePrice = 'STOCK' + '==' + "'" + stockUpdatePrice + "'"
+            dfCurrentstockUpdatePrice = dfstocks.query(queryGetCurrentStockUpdatePrice)
+
+            queryGetUpdatePriceDateValue = "DATE" + "==" + "'" + processingDate + "'"
+            dfCurrentstockUpdatePrice = dfCurrentstockUpdatePrice.query(queryGetUpdatePriceDateValue)
+            dfCurrentstockUpdatePrice = dfCurrentstockUpdatePrice.tail(1)
+
+            # SUMMARY
+            if (dfCurrentstockUpdatePrice.shape[0]) > 0:
+                priceForWeek = float(dfCurrentstockUpdatePrice['PRICE'].iloc[0])
+                dqQty = dfStocksCurrentlyBought.query(queryGetCurrentStockUpdatePrice)
+                weekQtyForUpdate = float(dqQty['QTY'].iloc[0])
+                maxPriceTillNow = float(dqQty['MAXPRICE'].iloc[0])
+                weekQtyForUpdate = float(dqQty['QTY'].iloc[0])
+                updatePurchasePrice = float(dqQty['PURCHASEPRICE'].iloc[0])
+                updateCurrentPrice = float(dqQty['CURRPRICE'].iloc[0])
+                updateCurrentValue = float(dqQty['CURRVALUE'].iloc[0])
+
+                if( maxPriceTillNow < priceForWeek):
+                    maxPriceTillNow = priceForWeek
+                    dfStocksCurrentlyBought = dfStocksCurrentlyBought.append({'STOCK': stockUpdatePrice, 'PURCHASEDATE': processingDate, 'PURCHASEPRICE': updatePurchasePrice, 'QTY': weekQtyForUpdate, 'CURRVALUE': updateCurrentValue, 'CURRPRICE': updateCurrentPrice, 'MAXPRICE': maxPriceTillNow, 'ROC': ROI, 'ACTIVE': 'X'}, ignore_index=True)
+
+
+
+######################----------------------###################################
+######## SELL STOCK LOGIC #####################################################
+######################----------------------###################################
+        dfstocksActive = dfStocksCurrentlyBought.query(checkActive())
+        stockBoughtList = dfstocksActive.STOCK.unique()
+
+        for stockToSellCheck in stockBoughtList:
+
+            dfStockWithCurrentDate = dfstocks.query(createqueryDate(processingDate))
+            queryGetCurrentPriceWithDateSTOCK = checkStock(stockToSellCheck)
+            dfStockWithCurrentDate = dfStockWithCurrentDate.query(queryGetCurrentPriceWithDateSTOCK)
+# SELLING RULES
+# 1)If increasing index this week : current price is higher than 0.8 MAX PRICE => sell
+# 2) If currennt price or max price is lowe than 0.9 max price => sell
+            listMaxStockPrice = dfStocksCurrentlyBought.groupby(['STOCK'])['MAXPRICE'].max()
+            stockPriceThisStock =  round(float (listMaxStockPrice.get(key=stockToSellCheck)),2)
+            # Get current price if it's less than 0.8 MAX PRICE if index increasing or less than 0.9 index decreasing
+            if dfStockWithCurrentDate.size > 0:
+                currentStockPrice = dfStockWithCurrentDate.iloc[-1]['PRICE']
+                dfCurrentStockData = dfStocksCurrentlyBought.query(queryGetCurrentPriceWithDateSTOCK )
+                STOCKQTY = dfCurrentStockData.iloc[-1]['QTY']
+                if (isIndexIncreasing ==1):
+                    stopLossPrice = c_stoplossindexup *  stockPriceThisStock
+                else:
+                    stopLossPrice = c_stoplossindexdown *  stockPriceThisStock
+
+                if (currentStockPrice < stopLossPrice):
+                    dfStocksCurrentlyBought.loc[ (dfStocksCurrentlyBought.STOCK == stockToSellCheck  ),'ACTIVE'] = ''
+                    print(" --: STOCK VALUE IS : " + str(stockToSellCheck) +' - ' + str(processingDate) +' - ' +  ' Total Amount : ' + fround(currentStockPrice * STOCKQTY ))
+                    totalStocksHeld = totalStocksHeld - 1
+                    totalStopLossMoney = totalStopLossMoney + currentStockPrice * STOCKQTY
+                    print("STOP LOSS TRIGGERED FOR " + stockToSellCheck + ' .GETTING ' + fround(currentStockPrice * STOCKQTY) + ' AND TOTAL FROM STOP LOSS IS ' + fround(totalStopLossMoney ))
+
+## BUY RULES
+
+    if (isIndexIncreasing == 1):
+        for  stock in companiesList :
+            queryGetCurrentStockData = 'STOCK' + '==' + "'" + stock + "'"
+            dfCurrentStock = dfstocks.query(queryGetCurrentStockData)
+            periodToLookBack = 20 # 20 weeks
+            queryDateForCurrentStock = "DATE" + "<" + "'" + processingDate + "'"
+            dfCurrentStocklookBackData = dfCurrentStock.query(queryDateForCurrentStock)
+            dfCurrentStocklookBackData = dfCurrentStocklookBackData.tail(periodToLookBack)
+            if dfCurrentStocklookBackData.shape[0] > periodToLookBack - 1:
+                start = 0
+                length = periodToLookBack - 1
+                stockHighestPointValid = True
+                latestpriceIndex = length - start
+                for n in range(start, start + length):
+                    currentweekPrice  = dfCurrentStocklookBackData['PRICE'].iloc[latestpriceIndex]
+                    lastweekPrice = dfCurrentStocklookBackData['PRICE'].iloc[n]
+                    if (lastweekPrice > currentweekPrice):
+                        stockHighestPointValid = False
+                        break
+
+                if( stockHighestPointValid == True ):
+                    STOCK = dfCurrentStocklookBackData['STOCK'].iloc[-1]
+                    VOLUME = dfCurrentStocklookBackData['VOLUME'].iloc[-1]
+                    DATE = processingDate #dfCurrentStocklookBackData['DATE'].iloc[-1]
+                    ROI = dfCurrentStocklookBackData['ROC100'].iloc[-1]
+## how to use this .it should be the same as last price
+                    maxPrice = dfCurrentStocklookBackData.loc[dfCurrentStocklookBackData['PRICE'].idxmax()]['PRICE']
+
+                    if (ROI > 30 and ROI < 80 and VOLUME > 1000000 and maxPrice > 15 and stockHighestPointValid == True):
+
+                        dfCheckStockALreadyAdded = dfStocksCurrentlyBought.query(queryGetCurrentStockData)
+                        if dfCheckStockALreadyAdded.size == 0:
+                            totalStocksHeld = totalStocksHeld + 1
+                            CURRENTPRICESTOCKDATE = ''
+                            numberOfStocks = int(moneyforeachstock / maxPrice)
+                            amountSpent = numberOfStocks *  maxPrice
+#                            try:
+#                                currentPriceAPICall = str(fround(yf.Ticker(STOCK).info['regularMarketPrice']))
+                            queryGetCurrentStockPrice = 'STOCK' + '==' + "'" + stock + "'"
+                            dfCurrentStockPrice = dfCurrentPrice.query(queryGetCurrentStockPrice)
+                            if(not dfCurrentStockPrice.empty):
+                                currentPriceAPICall = float( dfCurrentStockPrice['CURRPRICE'].iloc[0] )
+                                currentValueAPICall = fround( currentPriceAPICall * numberOfStocks)
+                                print( str(totalStocksHeld) +' ++ : ' + STOCK + ',' + str(processingDate) + ',' + 'PP: '+ fround(maxPrice) + ',CP:'+ str(currentPriceAPICall) + ',' +'QTY: '+ str(numberOfStocks) +', AS: '+ fround(amountSpent) +','+ 'CV: '+ currentValueAPICall + ',ROI: ' + fround(ROI))
+                                dfStocksCurrentlyBought = dfStocksCurrentlyBought.append({'STOCK':STOCK , 'PURCHASEDATE' : DATE , 'PURCHASEPRICE': maxPrice , 'QTY': numberOfStocks , 'CURRVALUE': currentValueAPICall ,'CURRPRICE': currentPriceAPICall , 'MAXPRICE' : maxPrice, 'ROC': ROI , 'ACTIVE': 'X' }, ignore_index=True)
+                                totalSpent = totalSpent + amountSpent
+    else:
+        print('NO RECOMMENDATIONS AS INDEX IS GOING DOWN : ' + str(start_date))
+
+
+# Update MAX Price of this week
+
+
+    start_date += delta
+
+weekValueAPICall = 0
+weektotalValue = 0
+totalValueWeek = 0
+totalValueWeekAPICall = 0
+
+print('CHECKING ROI')
+
+stockWeekList = dfStocksCurrentlyBought.query("ACTIVE=='X'").STOCK.unique()
+for stockWeekValue in stockWeekList:
+    queryGetCurrentStockDataWeekValue = 'STOCK' + '=='+"'"+stockWeekValue+"'"
+    dfCurrentstockWeekValue=dfstocks.query(queryGetCurrentStockDataWeekValue)
+
+    queryGetCurrentPriceWithDateWeekValue="DATE"+"=="+"'"+processingDate+"'"
+    dfCurrentstockWeekValue=dfCurrentstockWeekValue.query(queryGetCurrentPriceWithDateWeekValue)
+    dfCurrentstockWeekValue=dfCurrentstockWeekValue.tail(1)
+
+
+    #SUMMARY
+    if(dfCurrentstockWeekValue.shape[0])>0:
+        priceForWeek=float(dfCurrentstockWeekValue['PRICE'].iloc[0])
+        dqQty = dfStocksCurrentlyBought.query(queryGetCurrentStockDataWeekValue)
+        weekQty=float(dqQty['QTY'].iloc[0])
+        stockValue=float(priceForWeek*weekQty)
+        weektotalValue = float(weektotalValue + stockValue)
+
+        weekPriceAPICall = 0
+#        try:
+#            weekPriceAPICall = yft.Ticker(stockWeekValue).info['regularMarketPrice']
+        queryGetCurrentStockPriceWeek = 'STOCK' + '==' + "'" + stockWeekValue + "'"
+        dfCurrentStockPriceWeek = dfCurrentPrice.query(queryGetCurrentStockPriceWeek)
+        if(not dfCurrentStockPriceWeek.empty):
+            weekPriceAPICall = float(dfCurrentStockPriceWeek['CURRPRICE'].iloc[0])
+            weekValueAPICall = weekPriceAPICall * weekQty
+            weektotalValueAPI = float(weektotalValueAPI) + float(weekValueAPICall)
+            print("Check stock " + str(stockWeekValue) + ' getting ' + fround(weekValueAPICall) + 'and total is ' + fround(weektotalValueAPI) )
+
+weektotalValueAPI = weektotalValueAPI + totalStopLossMoney
+weektotalValue = weektotalValue + totalStopLossMoney
+if( weektotalValue > 0):
+    currWeekROI = fround((weektotalValue -totalSpent)/totalSpent*100)
+    currPriceAPI = fround((weektotalValueAPI -totalSpent)/totalSpent*100)
+
+
+print('Spent:'+fround(totalSpent)+'-'+'Week Value @ ' + processingDate  +'- '+ 'Week Value: '+ fround(weektotalValue) + 'Curr Price Week Value : ' + fround(weektotalValueAPI) +' ROI%='+ currWeekROI +'%'  +' CURR ROI%='+ currPriceAPI +'%' )
+
+
+
+print("--- %s seconds ---" % (time.time() - start_time))
+
+
+
+
+*****************************
+
+Go to this URL in a browser: https://accounts.google.com/o/oauth2/auth?client_id=947318989803-6bn6qk8qdgf4n4g3pfee6491hc0brc4i.apps.googleusercontent.com&redirect_uri=urn%3aietf%3awg%3aoauth%3a2.0%3aoob&response_type=code&scope=email%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdocs.test%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdrive%20https%3a%2f%2fwww.googleapis.com%2fauth%2fdrive.photos.readonly%20https%3a%2f%2fwww.googleapis.com%2fauth%2fpeopleapi.readonly
+
+Enter your authorization code:
+··········
+Mounted at /content/drive
+Requirement already satisfied: PyDrive in /usr/local/lib/python3.6/dist-packages (1.3.1)
+Requirement already satisfied: oauth2client>=4.0.0 in /usr/local/lib/python3.6/dist-packages (from PyDrive) (4.1.3)
+Requirement already satisfied: google-api-python-client>=1.2 in /usr/local/lib/python3.6/dist-packages (from PyDrive) (1.7.11)
+Requirement already satisfied: PyYAML>=3.0 in /usr/local/lib/python3.6/dist-packages (from PyDrive) (3.13)
+Requirement already satisfied: six>=1.6.1 in /usr/local/lib/python3.6/dist-packages (from oauth2client>=4.0.0->PyDrive) (1.12.0)
+Requirement already satisfied: pyasn1-modules>=0.0.5 in /usr/local/lib/python3.6/dist-packages (from oauth2client>=4.0.0->PyDrive) (0.2.7)
+Requirement already satisfied: httplib2>=0.9.1 in /usr/local/lib/python3.6/dist-packages (from oauth2client>=4.0.0->PyDrive) (0.11.3)
+Requirement already satisfied: rsa>=3.1.4 in /usr/local/lib/python3.6/dist-packages (from oauth2client>=4.0.0->PyDrive) (4.0)
+Requirement already satisfied: pyasn1>=0.1.7 in /usr/local/lib/python3.6/dist-packages (from oauth2client>=4.0.0->PyDrive) (0.4.8)
+Requirement already satisfied: google-auth-httplib2>=0.0.3 in /usr/local/lib/python3.6/dist-packages (from google-api-python-client>=1.2->PyDrive) (0.0.3)
+Requirement already satisfied: uritemplate<4dev,>=3.0.0 in /usr/local/lib/python3.6/dist-packages (from google-api-python-client>=1.2->PyDrive) (3.0.1)
+Requirement already satisfied: google-auth>=1.4.1 in /usr/local/lib/python3.6/dist-packages (from google-api-python-client>=1.2->PyDrive) (1.4.2)
+Requirement already satisfied: cachetools>=2.0.0 in /usr/local/lib/python3.6/dist-packages (from google-auth>=1.4.1->google-api-python-client>=1.2->PyDrive) (4.0.0)
+Collecting yfinance
+  Downloading https://files.pythonhosted.org/packages/c2/31/8b374a12b90def92a4e27d0fc595fc43635f395984e36a075244d98bd265/yfinance-0.1.54.tar.gz
+Requirement already satisfied: pandas>=0.24 in /usr/local/lib/python3.6/dist-packages (from yfinance) (0.25.3)
+Requirement already satisfied: numpy>=1.15 in /usr/local/lib/python3.6/dist-packages (from yfinance) (1.17.5)
+Requirement already satisfied: requests>=2.20 in /usr/local/lib/python3.6/dist-packages (from yfinance) (2.21.0)
+Requirement already satisfied: multitasking>=0.0.7 in /usr/local/lib/python3.6/dist-packages (from yfinance) (0.0.9)
+Requirement already satisfied: python-dateutil>=2.6.1 in /usr/local/lib/python3.6/dist-packages (from pandas>=0.24->yfinance) (2.6.1)
+Requirement already satisfied: pytz>=2017.2 in /usr/local/lib/python3.6/dist-packages (from pandas>=0.24->yfinance) (2018.9)
+Requirement already satisfied: chardet<3.1.0,>=3.0.2 in /usr/local/lib/python3.6/dist-packages (from requests>=2.20->yfinance) (3.0.4)
+Requirement already satisfied: certifi>=2017.4.17 in /usr/local/lib/python3.6/dist-packages (from requests>=2.20->yfinance) (2019.11.28)
+Requirement already satisfied: idna<2.9,>=2.5 in /usr/local/lib/python3.6/dist-packages (from requests>=2.20->yfinance) (2.8)
+Requirement already satisfied: urllib3<1.25,>=1.21.1 in /usr/local/lib/python3.6/dist-packages (from requests>=2.20->yfinance) (1.24.3)
+Requirement already satisfied: six>=1.5 in /usr/local/lib/python3.6/dist-packages (from python-dateutil>=2.6.1->pandas>=0.24->yfinance) (1.12.0)
+Building wheels for collected packages: yfinance
+  Building wheel for yfinance (setup.py) ... done
+  Created wheel for yfinance: filename=yfinance-0.1.54-py2.py3-none-any.whl size=22411 sha256=c8ac9576dd1ad141701e90fbcb2104990b5c0e2cca8f9e5b29a51e8cd1f3e46f
+  Stored in directory: /root/.cache/pip/wheels/f9/e3/5b/ec24dd2984b12d61e0abf26289746c2436a0e7844f26f2515c
+Successfully built yfinance
+Installing collected packages: yfinance
+Successfully installed yfinance-0.1.54
+Index : 2019-01-04 - 0
+NO RECOMMENDATIONS AS INDEX IS GOING DOWN : 2019-01-04
+Index : 2019-02-01 - 1
+1 ++ : avgo,2019-02-01,PP: 258.04,CP:308.66,QTY: 9, AS: 2322.36,CV: 2777.94,ROI: 37.25
+2 ++ : entg,2019-02-01,PP: 31.09,CP:55.39,QTY: 80, AS: 2487.52,CV: 4431.2,ROI: 51.18
+3 ++ : on,2019-02-01,PP: 20.12,CP:25.08,QTY: 124, AS: 2494.88,CV: 3109.92,ROI: 42.29
+4 ++ : adi,2019-02-01,PP: 95.7,CP:119.75,QTY: 26, AS: 2488.2,CV: 3113.5,ROI: 33.08
+5 ++ : ctre,2019-02-01,PP: 20.31,CP:21.4,QTY: 123, AS: 2498.01,CV: 2632.2,ROI: 50.66
+6 ++ : amtd,2019-02-01,PP: 54.88,CP:51.39,QTY: 45, AS: 2469.38,CV: 2312.55,ROI: 36.87
+7 ++ : csiq,2019-02-01,PP: 19.51,CP:23.05,QTY: 128, AS: 2497.28,CV: 2950.4,ROI: 56.46
+8 ++ : lrcx,2019-02-01,PP: 162.01,CP:307.05,QTY: 15, AS: 2430.15,CV: 4605.75,ROI: 47.55
+9 ++ : yndx,2019-02-01,PP: 33.6,CP:44.63,QTY: 74, AS: 2486.4,CV: 3302.62,ROI: 45.33
+10 ++ : glpi,2019-02-01,PP: 34.0,CP:45.31,QTY: 73, AS: 2482.0,CV: 3307.63,ROI: 33.6
+11 ++ : fisv,2019-02-01,PP: 85.07,CP:120.79,QTY: 29, AS: 2467.03,CV: 3502.91,ROI: 55.99
+Index : 2019-03-01 - 1
+12 ++ : intc,2019-03-01,PP: 51.52,CP:59.98,QTY: 48, AS: 2473.06,CV: 2879.04,ROI: 53.96
+13 ++ : msft,2019-03-01,PP: 109.82,CP:167.42,QTY: 22, AS: 2416.04,CV: 3683.24,ROI: 77.43
+14 ++ : grmn,2019-03-01,PP: 80.94,CP:98.4,QTY: 30, AS: 2428.17,CV: 2952.0,ROI: 69.79
+15 ++ : snps,2019-03-01,PP: 102.3,CP:150.31,QTY: 24, AS: 2455.2,CV: 3607.44,ROI: 42.42
+16 ++ : fslr,2019-03-01,PP: 53.73,CP:54.05,QTY: 46, AS: 2471.58,CV: 2486.3,ROI: 65.83
+17 ++ : mar,2019-03-01,PP: 127.02,CP:149.19,QTY: 19, AS: 2413.38,CV: 2834.61,ROI: 51.93
+18 ++ : csx,2019-03-01,PP: 72.32,CP:75.5,QTY: 34, AS: 2458.95,CV: 2567.0,ROI: 57.26
+19 ++ : mlco,2019-03-01,PP: 23.06,CP:24.4,QTY: 108, AS: 2490.48,CV: 2635.2,ROI: 48.86
+20 ++ : sbux,2019-03-01,PP: 70.35,CP:92.93,QTY: 35, AS: 2462.28,CV: 3252.55,ROI: 36.37
+21 ++ : wb,2019-03-01,PP: 68.47,CP:48.24,QTY: 36, AS: 2464.92,CV: 1736.64,ROI: 43.12
+22 ++ : wynn,2019-03-01,PP: 128.33,CP:152.69,QTY: 19, AS: 2438.27,CV: 2901.11,ROI: 37.28
+23 ++ : csco,2019-03-01,PP: 48.75,CP:49.31,QTY: 51, AS: 2486.4,CV: 2514.81,ROI: 55.96
+24 ++ : mu,2019-03-01,PP: 42.57,CP:58.02,QTY: 58, AS: 2469.06,CV: 3365.16,ROI: 69.06
+25 ++ : oled,2019-03-01,PP: 145.44,CP:213.89,QTY: 17, AS: 2472.48,CV: 3636.13,ROI: 75.98
+26 ++ : insm,2019-03-01,PP: 28.49,CP:22.94,QTY: 87, AS: 2478.63,CV: 1995.78,ROI: 74.46
+27 ++ : ssnc,2019-03-01,PP: 59.43,CP:63.51,QTY: 42, AS: 2495.89,CV: 2667.42,ROI: 65.83
+28 ++ : sgms,2019-03-01,PP: 28.77,CP:28.05,QTY: 86, AS: 2474.22,CV: 2412.3,ROI: 40.34
+29 ++ : tcfcp,2019-03-01,PP: 22.74,CP:26.61,QTY: 109, AS: 2478.88,CV: 2900.49,ROI: 41.4
+30 ++ : ter,2019-03-01,PP: 41.02,CP:70.55,QTY: 60, AS: 2461.38,CV: 4233.0,ROI: 41.01
+31 ++ : adp,2019-03-01,PP: 150.1,CP:176.03,QTY: 16, AS: 2401.6,CV: 2816.48,ROI: 52.09
+32 ++ : exc,2019-03-01,PP: 47.62,CP:46.96,QTY: 52, AS: 2476.08,CV: 2441.92,ROI: 44.86
+33 ++ : xel,2019-03-01,PP: 53.79,CP:65.16,QTY: 46, AS: 2474.39,CV: 2997.36,ROI: 35.48
+Index : 2019-03-29 - 1
+ --: STOCK VALUE IS : csiq - 2019-03-29 -  Total Amount : 2384.64
+STOP LOSS TRIGGERED FOR csiq .GETTING 2384.64 AND TOTAL FROM STOP LOSS IS 2384.64
+ --: STOCK VALUE IS : sgms - 2019-03-29 -  Total Amount : 1756.12
+STOP LOSS TRIGGERED FOR sgms .GETTING 1756.12 AND TOTAL FROM STOP LOSS IS 4140.76
+32 ++ : goog,2019-03-29,PP: 1205.5,CP:1462.91,QTY: 2, AS: 2411.0,CV: 2925.82,ROI: 46.18
+33 ++ : klac,2019-03-29,PP: 118.47,CP:180.87,QTY: 21, AS: 2487.87,CV: 3798.27,ROI: 31.52
+34 ++ : cost,2019-03-29,PP: 235.89,CP:303.4,QTY: 10, AS: 2358.9,CV: 3034.0,ROI: 47.66
+35 ++ : googl,2019-03-29,PP: 1207.65,CP:1462.54,QTY: 2, AS: 2415.3,CV: 2925.08,ROI: 43.41
+36 ++ : mksi,2019-03-29,PP: 90.12,CP:115.57,QTY: 27, AS: 2433.35,CV: 3120.39,ROI: 35.14
+37 ++ : sbac,2019-03-29,PP: 196.54,CP:250.7,QTY: 12, AS: 2358.48,CV: 3008.4,ROI: 62.69
+Index : 2019-04-26 - 1
+38 ++ : mchp,2019-04-26,PP: 94.17,CP:109.08,QTY: 26, AS: 2448.37,CV: 2836.08,ROI: 31.27
+39 ++ : tsco,2019-04-26,PP: 103.16,CP:91.14,QTY: 24, AS: 2475.84,CV: 2187.36,ROI: 73.84
+40 ++ : akam,2019-04-26,PP: 77.05,CP:96.0,QTY: 32, AS: 2465.6,CV: 3072.0,ROI: 47.8
+41 ++ : mxim,2019-04-26,PP: 57.75,CP:62.21,QTY: 43, AS: 2483.21,CV: 2675.03,ROI: 38.31
+42 ++ : aapl,2019-04-26,PP: 196.77,CP:316.27,QTY: 12, AS: 2361.24,CV: 3795.24,ROI: 37.68
+43 ++ : fast,2019-04-26,PP: 34.2,CP:36.37,QTY: 73, AS: 2496.6,CV: 2655.01,ROI: 60.44
+44 ++ : txn,2019-04-26,PP: 114.44,CP:130.76,QTY: 21, AS: 2403.24,CV: 2745.96,ROI: 53.48
+45 ++ : payx,2019-04-26,PP: 80.37,CP:88.2,QTY: 31, AS: 2491.47,CV: 2734.2,ROI: 48.94
+46 ++ : mrvl,2019-04-26,PP: 23.57,CP:28.5,QTY: 106, AS: 2498.21,CV: 3021.0,ROI: 60.6
+Index : 2019-05-24 - 0
+ --: STOCK VALUE IS : on - 2019-05-24 -  Total Amount : 2192.32
+STOP LOSS TRIGGERED FOR on .GETTING 2192.32 AND TOTAL FROM STOP LOSS IS 6333.08
+ --: STOCK VALUE IS : mlco - 2019-05-24 -  Total Amount : 2187.11
+STOP LOSS TRIGGERED FOR mlco .GETTING 2187.11 AND TOTAL FROM STOP LOSS IS 8520.19
+ --: STOCK VALUE IS : wb - 2019-05-24 -  Total Amount : 1571.76
+STOP LOSS TRIGGERED FOR wb .GETTING 1571.76 AND TOTAL FROM STOP LOSS IS 10091.95
+ --: STOCK VALUE IS : wynn - 2019-05-24 -  Total Amount : 2131.23
+STOP LOSS TRIGGERED FOR wynn .GETTING 2131.23 AND TOTAL FROM STOP LOSS IS 12223.18
+ --: STOCK VALUE IS : mu - 2019-05-24 -  Total Amount : 1972.0
+STOP LOSS TRIGGERED FOR mu .GETTING 1972.0 AND TOTAL FROM STOP LOSS IS 14195.18
+ --: STOCK VALUE IS : mksi - 2019-05-24 -  Total Amount : 1998.73
+STOP LOSS TRIGGERED FOR mksi .GETTING 1998.73 AND TOTAL FROM STOP LOSS IS 16193.91
+NO RECOMMENDATIONS AS INDEX IS GOING DOWN : 2019-05-24
+Index : 2019-06-21 - 1
+41 ++ : arcc,2019-06-21,PP: 17.1,CP:19.07,QTY: 146, AS: 2496.89,CV: 2784.22,ROI: 31.68
+42 ++ : dltr,2019-06-21,PP: 110.31,CP:91.0,QTY: 22, AS: 2426.82,CV: 2002.0,ROI: 57.77
+43 ++ : lnt,2019-06-21,PP: 49.31,CP:56.87,QTY: 50, AS: 2465.55,CV: 2843.5,ROI: 32.6
+44 ++ : rost,2019-06-21,PP: 100.5,CP:118.21,QTY: 24, AS: 2412.0,CV: 2837.04,ROI: 79.13
+45 ++ : mdlz,2019-06-21,PP: 54.23,CP:55.14,QTY: 46, AS: 2494.63,CV: 2536.44,ROI: 32.54
+Index : 2019-07-19 - 1
+ --: STOCK VALUE IS : insm - 2019-07-19 -  Total Amount : 1926.18
+STOP LOSS TRIGGERED FOR insm .GETTING 1926.18 AND TOTAL FROM STOP LOSS IS 18120.09
+45 ++ : cy,2019-07-19,PP: 22.28,CP:23.38,QTY: 112, AS: 2495.25,CV: 2618.56,ROI: 62.44
+46 ++ : cara,2019-07-19,PP: 24.28,CP:17.05,QTY: 102, AS: 2476.56,CV: 1739.1,ROI: 72.93
+47 ++ : ual,2019-07-19,PP: 91.23,CP:89.8,QTY: 27, AS: 2463.21,CV: 2424.6,ROI: 34.4
+48 ++ : acia,2019-07-19,PP: 64.4,CP:68.95,QTY: 38, AS: 2447.2,CV: 2620.1,ROI: 47.84
+Index : 2019-08-16 - 0
+ --: STOCK VALUE IS : amtd - 2019-08-16 -  Total Amount : 1960.78
+STOP LOSS TRIGGERED FOR amtd .GETTING 1960.78 AND TOTAL FROM STOP LOSS IS 20080.87
+ --: STOCK VALUE IS : ssnc - 2019-08-16 -  Total Amount : 1900.84
+STOP LOSS TRIGGERED FOR ssnc .GETTING 1900.84 AND TOTAL FROM STOP LOSS IS 21981.71
+NO RECOMMENDATIONS AS INDEX IS GOING DOWN : 2019-08-16
+Index : 2019-09-13 - 1
+47 ++ : wen,2019-09-13,PP: 22.26,CP:21.55,QTY: 112, AS: 2492.78,CV: 2413.6,ROI: 55.11
+48 ++ : prah,2019-09-13,PP: 103.31,CP:106.41,QTY: 24, AS: 2479.44,CV: 2553.84,ROI: 37.58
+49 ++ : stx,2019-09-13,PP: 53.1,CP:61.51,QTY: 47, AS: 2495.84,CV: 2890.97,ROI: 77.73
+50 ++ : pep,2019-09-13,PP: 136.41,CP:140.1,QTY: 18, AS: 2455.38,CV: 2521.8,ROI: 30.67
+51 ++ : cme,2019-09-13,PP: 218.79,CP:207.28,QTY: 11, AS: 2406.69,CV: 2280.08,ROI: 76.84
+52 ++ : mdco,2019-09-13,PP: 47.49,CP:84.96,QTY: 52, AS: 2469.48,CV: 4417.92,ROI: 34.0
+Index : 2019-10-11 - 1
+ --: STOCK VALUE IS : yndx - 2019-10-11 -  Total Amount : 2219.26
+STOP LOSS TRIGGERED FOR yndx .GETTING 2219.26 AND TOTAL FROM STOP LOSS IS 24200.97
+ --: STOCK VALUE IS : cara - 2019-10-11 -  Total Amount : 1922.19
+STOP LOSS TRIGGERED FOR cara .GETTING 1922.19 AND TOTAL FROM STOP LOSS IS 26123.16
+51 ++ : sgen,2019-10-11,PP: 84.32,CP:108.41,QTY: 29, AS: 2445.28,CV: 3143.89,ROI: 32.04
+52 ++ : cdw,2019-10-11,PP: 122.06,CP:140.89,QTY: 20, AS: 2441.2,CV: 2817.8,ROI: 79.87
+Index : 2019-11-08 - 1
+ --: STOCK VALUE IS : fslr - 2019-11-08 -  Total Amount : 2390.62
+STOP LOSS TRIGGERED FOR fslr .GETTING 2390.62 AND TOTAL FROM STOP LOSS IS 28513.78
+53 ++ : acad,2019-11-08,PP: 43.0,CP:44.93,QTY: 58, AS: 2493.71,CV: 2605.94,ROI: 54.33
+54 ++ : vrtx,2019-11-08,PP: 200.94,CP:236.51,QTY: 12, AS: 2411.28,CV: 2838.12,ROI: 36.31
+55 ++ : immu,2019-11-08,PP: 17.17,CP:19.52,QTY: 145, AS: 2489.65,CV: 2830.4,ROI: 46.13
+56 ++ : sbra,2019-11-08,PP: 23.85,CP:22.49,QTY: 104, AS: 2480.19,CV: 2338.96,ROI: 49.62
+57 ++ : gntx,2019-11-08,PP: 28.41,CP:31.12,QTY: 87, AS: 2471.67,CV: 2707.44,ROI: 55.91
+58 ++ : amgn,2019-11-08,PP: 216.51,CP:242.11,QTY: 11, AS: 2381.61,CV: 2663.21,ROI: 35.08
+59 ++ : qcom,2019-11-08,PP: 82.94,CP:93.0,QTY: 30, AS: 2488.11,CV: 2790.0,ROI: 35.13
+60 ++ : chtr,2019-11-08,PP: 476.48,CP:512.03,QTY: 5, AS: 2382.4,CV: 2560.15,ROI: 39.51
+Index : 2019-12-06 - 1
+ --: STOCK VALUE IS : csco - 2019-12-06 -  Total Amount : 2219.52
+STOP LOSS TRIGGERED FOR csco .GETTING 2219.52 AND TOTAL FROM STOP LOSS IS 30733.3
+60 ++ : adsk,2019-12-06,PP: 180.9,CP:192.38,QTY: 13, AS: 2351.7,CV: 2500.94,ROI: 66.88
+61 ++ : tecd,2019-12-06,PP: 144.89,CP:144.25,QTY: 17, AS: 2463.13,CV: 2452.25,ROI: 51.18
+62 ++ : wmgi,2019-12-06,PP: 29.77,CP:30.28,QTY: 83, AS: 2470.91,CV: 2513.24,ROI: 32.43
+63 ++ : disca,2019-12-06,PP: 32.94,CP:32.79,QTY: 75, AS: 2470.5,CV: 2459.25,ROI: 56.56
+64 ++ : paas,2019-12-06,PP: 19.25,CP:21.79,QTY: 129, AS: 2483.25,CV: 2810.91,ROI: 30.46
+Index : 2020-01-03 - 1
+ --: STOCK VALUE IS : acad - 2020-01-03 -  Total Amount : 2340.3
+STOP LOSS TRIGGERED FOR acad .GETTING 2340.3 AND TOTAL FROM STOP LOSS IS 33073.6
+64 ++ : amzn,2020-01-03,PP: 1869.8,CP:1885.89,QTY: 1, AS: 1869.8,CV: 1885.89,ROI: 43.26
+65 ++ : myok,2020-01-03,PP: 74.12,CP:76.0,QTY: 33, AS: 2445.96,CV: 2508.0,ROI: 40.11
+66 ++ : epzm,2020-01-03,PP: 22.62,CP:25.86,QTY: 110, AS: 2488.2,CV: 2844.6,ROI: 52.32
+67 ++ : adbe,2020-01-03,PP: 330.79,CP:349.0,QTY: 7, AS: 2315.53,CV: 2443.0,ROI: 69.59
+CHECKING ROI
+Check stock avgo getting 2777.94and total is 2777.94
+Check stock entg getting 4431.2and total is 7209.14
+Check stock adi getting 3113.5and total is 10322.64
+Check stock ctre getting 2632.2and total is 12954.84
+Check stock lrcx getting 4605.75and total is 17560.59
+Check stock glpi getting 3307.63and total is 20868.22
+Check stock fisv getting 3502.91and total is 24371.13
+Check stock intc getting 2879.04and total is 27250.17
+Check stock msft getting 3683.24and total is 30933.41
+Check stock grmn getting 2952.0and total is 33885.41
+Check stock snps getting 3607.44and total is 37492.85
+Check stock mar getting 2834.61and total is 40327.46
+Check stock csx getting 2567.0and total is 42894.46
+Check stock sbux getting 3252.55and total is 46147.01
+Check stock oled getting 3636.13and total is 49783.14
+Check stock tcfcp getting 2900.49and total is 52683.63
+Check stock ter getting 4233.0and total is 56916.63
+Check stock adp getting 2816.48and total is 59733.11
+Check stock exc getting 2441.92and total is 62175.03
+Check stock xel getting 2997.36and total is 65172.39
+Check stock goog getting 2925.82and total is 68098.21
+Check stock klac getting 3798.27and total is 71896.48
+Check stock cost getting 3034.0and total is 74930.48
+Check stock googl getting 2925.08and total is 77855.56
+Check stock sbac getting 3008.4and total is 80863.96
+Check stock mchp getting 2836.08and total is 83700.04
+Check stock tsco getting 2187.36and total is 85887.4
+Check stock akam getting 3072.0and total is 88959.4
+Check stock mxim getting 2675.03and total is 91634.43
+Check stock aapl getting 3795.24and total is 95429.67
+Check stock fast getting 2655.01and total is 98084.68
+Check stock txn getting 2745.96and total is 100830.64
+Check stock payx getting 2734.2and total is 103564.84
+Check stock mrvl getting 3021.0and total is 106585.84
+Check stock arcc getting 2784.22and total is 109370.06
+Check stock dltr getting 2002.0and total is 111372.06
+Check stock lnt getting 2843.5and total is 114215.56
+Check stock rost getting 2837.04and total is 117052.6
+Check stock mdlz getting 2536.44and total is 119589.04
+Check stock cy getting 2618.56and total is 122207.6
+Check stock ual getting 2424.6and total is 124632.2
+Check stock acia getting 2620.1and total is 127252.3
+Check stock wen getting 2413.6and total is 129665.9
+Check stock prah getting 2553.84and total is 132219.74
+Check stock stx getting 2890.97and total is 135110.71
+Check stock pep getting 2521.8and total is 137632.51
+Check stock cme getting 2280.08and total is 139912.59
+Check stock mdco getting 4417.92and total is 144330.51
+Check stock sgen getting 3143.89and total is 147474.4
+Check stock cdw getting 2817.8and total is 150292.2
+Check stock vrtx getting 2838.12and total is 153130.32
+Check stock immu getting 2830.4and total is 155960.72
+Check stock sbra getting 2338.96and total is 158299.68
+Check stock gntx getting 2707.44and total is 161007.12
+Check stock amgn getting 2663.21and total is 163670.33
+Check stock qcom getting 2790.0and total is 166460.33
+Check stock chtr getting 2560.15and total is 169020.48
+Check stock adsk getting 2500.94and total is 171521.42
+Check stock tecd getting 2452.25and total is 173973.67
+Check stock wmgi getting 2513.24and total is 176486.91
+Check stock disca getting 2459.25and total is 178946.16
+Check stock paas getting 2810.91and total is 181757.07
+Check stock amzn getting 1885.89and total is 183642.96
+Check stock myok getting 2508.0and total is 186150.96
+Check stock epzm getting 2844.6and total is 188995.56
+Check stock adbe getting 2443.0and total is 191438.56
+Spent:200675.02-Week Value @ 2020-01-03- Week Value: 219367.54Curr Price Week Value : 224512.16 ROI%=9.31% CURR ROI%=11.88%
+--- 1309.2866518497467 seconds ---
