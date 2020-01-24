@@ -1,0 +1,67 @@
+  Building wheel for yfinance (setup.py) ... done
+  Created wheel for yfinance: filename=yfinance-0.1.54-py2.py3-none-any.whl size=22411 sha256=771da73f657c8978f2033018f568dd1c89c93bb49a5ff4566c6f669a498b29e4
+  Stored in directory: /root/.cache/pip/wheels/f9/e3/5b/ec24dd2984b12d61e0abf26289746c2436a0e7844f26f2515c
+Successfully built yfinance
+Installing collected packages: yfinance
+Successfully installed yfinance-0.1.54
+Index : 2018-09-07 - 1
+1 ++ : xlnx,2018-09-07,PP: 76.44,CP:101.89,QTY: 32, AS: 2446.05,CV: 3260.48,ROI: 52.35
+2 ++ : wday,2018-09-07,PP: 154.54,CP:183.0,QTY: 16, AS: 2472.64,CV: 2928.0,ROI: 73.78
+3 ++ : tmus,2018-09-07,PP: 66.04,CP:81.95,QTY: 37, AS: 2443.48,CV: 3032.15,ROI: 41.87
+4 ++ : arcc,2018-09-07,PP: 15.21,CP:19.07,QTY: 164, AS: 2494.28,CV: 3127.48,ROI: 32.88
+5 ++ : ctxs,2018-09-07,PP: 112.08,CP:117.15,QTY: 22, AS: 2465.76,CV: 2577.3,ROI: 69.33
+6 ++ : sfm,2018-09-07,PP: 26.47,CP:17.33,QTY: 94, AS: 2488.18,CV: 1629.02,ROI: 31.76
+7 ++ : cdev,2018-09-07,PP: 19.27,CP:4.55,QTY: 129, AS: 2485.83,CV: 586.95,ROI: 37.74
+8 ++ : ual,2018-09-07,PP: 87.42,CP:89.8,QTY: 28, AS: 2447.76,CV: 2514.4,ROI: 71.41
+9 ++ : cost,2018-09-07,PP: 230.32,CP:303.4,QTY: 10, AS: 2303.2,CV: 3034.0,ROI: 62.43
+10 ++ : csco,2018-09-07,PP: 45.81,CP:49.31,QTY: 54, AS: 2473.63,CV: 2662.74,ROI: 65.55
+11 ++ : hban,2018-09-07,PP: 15.25,CP:14.74,QTY: 163, AS: 2485.75,CV: 2402.62,ROI: 74.38
+12 ++ : cme,2018-09-07,PP: 167.08,CP:207.28,QTY: 14, AS: 2339.12,CV: 2901.92,ROI: 73.46
+13 ++ : lite,2018-09-07,PP: 67.9,CP:78.57,QTY: 36, AS: 2444.4,CV: 2828.52,ROI: 73.17
+14 ++ : play,2018-09-07,PP: 56.99,CP:46.76,QTY: 43, AS: 2450.4,CV: 2010.68,ROI: 42.65
+15 ++ : rost,2018-09-07,PP: 94.06,CP:118.21,QTY: 26, AS: 2445.59,CV: 3073.46,ROI: 57.38
+16 ++ : payx,2018-09-07,PP: 70.47,CP:88.2,QTY: 35, AS: 2466.55,CV: 3087.0,ROI: 34.15
+17 ++ : adp,2018-09-07,PP: 142.31,CP:176.03,QTY: 17, AS: 2419.27,CV: 2992.51,ROI: 75.78
+18 ++ : fisv,2018-09-07,PP: 80.07,CP:120.79,QTY: 31, AS: 2482.17,CV: 3744.49,ROI: 61.42
+19 ++ : hds,2018-09-07,PP: 45.59,CP:40.71,QTY: 54, AS: 2461.86,CV: 2198.34,ROI: 44.87
+Index : 2018-10-05 - 0
+NO RECOMMENDATIONS AS INDEX IS GOING DOWN : 2018-10-05
+Index : 2018-11-02 - 0
+Money spent for losting stocks2444.4
+ --: STOCK VALUE IS : lite - 2018-11-02 -  Total Amount : 1884.24
+STOP LOSS TRIGGERED FOR lite .GETTING 1884.24 AND TOTAL FROM STOP LOSS IS 1884.24
+NO RECOMMENDATIONS AS INDEX IS GOING DOWN : 2018-11-02
+Index : 2018-11-30 - 0
+Money spent for losting stocks4930.23
+ --: STOCK VALUE IS : cdev - 2018-11-30 -  Total Amount : 2002.08
+STOP LOSS TRIGGERED FOR cdev .GETTING 2002.08 AND TOTAL FROM STOP LOSS IS 3886.32
+NO RECOMMENDATIONS AS INDEX IS GOING DOWN : 2018-11-30
+CHECKING ROI
+Check stock xlnx getting 3260.48and total is 3260.48
+Check stock wday getting 2928.0and total is 6188.48
+Check stock tmus getting 3032.15and total is 9220.63
+Check stock arcc getting 3127.48and total is 12348.11
+Check stock ctxs getting 2577.3and total is 14925.41
+Check stock sfm getting 1629.02and total is 16554.43
+Check stock ual getting 2514.4and total is 19068.83
+Check stock cost getting 3034.0and total is 22102.83
+Check stock csco getting 2662.74and total is 24765.57
+Check stock hban getting 2402.62and total is 27168.19
+Check stock cme getting 2901.92and total is 30070.11
+Check stock play getting 2010.68and total is 32080.79
+Check stock rost getting 3073.46and total is 35154.25
+Check stock payx getting 3087.0and total is 38241.25
+Check stock adp getting 2992.51and total is 41233.76
+Check stock fisv getting 3744.49and total is 44978.25
+Check stock hds getting 2198.34and total is 47176.59
+Total spent : 46515.92
+Total value : 51062.91
+Total spent for losing stocks : 4930.23
+Total got from liquidating losing stocks : 3886.32
+TOtal spent for winning stocks : 41585.68
+TOtal got for winning stocks : 47176.59
+Overall profit %: 9.78 Win profit %: 13.44 Loosing stocks loss %: -21.17
+Spent:46515.92 WeekValue:2018-11-30 CurrPriceWeekValue:51062.91 CURRROI%=9.78%
+2018-09-07 : 2018-12-01 : 0.9 : 0.8 : 19 : 17 : 2 : 8816.55
+Loss %21.17 Profit %113.44
+--- 156.40112948417664 seconds ---
