@@ -1,0 +1,3 @@
+indexPath = '/Users/sakiv/temp/nasdaq/data2/index.csv'
+stockCombinedPath = '/Users/sakiv/temp/nasdaq/data2/stockscombined.csv'
+currentPricePath = '/Users/sakiv/temp/nasdaq/data2/CurrentPrice.csv'
